@@ -360,7 +360,7 @@ impl Board {
     }
 
     pub fn is_legal(&self, color: Color, mv: Move) -> bool {
-        let all_color = self.get_pieces(color).all;
+        let pieces_all = self.get_pieces(color).all;
         match mv.ty {
             MoveType::King => {
                 let king = self.get_pieces(color).king & 1 << mv.from;
@@ -369,10 +369,248 @@ impl Board {
                     | (king >> 1 | king >> 0o11 | king << 7) & !0x8080808080808080
                     | king << 0o10
                     | king >> 0o10)
-                    & !all_color
+                    & !pieces_all
                     & 1 << mv.to
                     == 0
                 {
+                    return false;
+                }
+            }
+            MoveType::Queen => {
+                let other_all = self.get_pieces(color.inv()).all;
+                let to_square = 1 << mv.to;
+
+                let queen = self.get_pieces(color).queens & 1 << mv.from;
+                if queen == 0 {
+                    return false;
+                }
+                'queen_block: loop {
+                    // move r: step = (step & !other_all) << 1 & !0x101010101010101 & !pieces_all;
+                    // move l: step = (step & !other_all) >> 1 & !0x8080808080808080 & !pieces_all;
+                    // move u: step = (step & !other_all) << 0o10 & !pieces_all;
+                    // move d: step = (step & !other_all) >> 0o10 & !pieces_all;
+
+                    // move ru: step = (step & !other_all) << 0o11 & !0x101010101010101 & !pieces_all;
+                    // move lu: step = (step & !other_all) << 7 & !0x8080808080808080 & !pieces_all;
+                    // move rd: step = (step & !other_all) >> 7 & !0x101010101010101 & !pieces_all;
+                    // move ld: step = (step & !other_all) >> 0o11 & !0x8080808080808080 & !pieces_all;
+
+                    let mut step = queen;
+                    // right
+                    loop {
+                        step = (step & !other_all) << 1 & !0x101010101010101 & !pieces_all;
+                        if step == 0 {
+                            break;
+                        }
+                        if step == to_square {
+                            break 'queen_block;
+                        }
+                    }
+
+                    step = queen;
+                    // left
+                    loop {
+                        step = (step & !other_all) >> 1 & !0x8080808080808080 & !pieces_all;
+                        if step == 0 {
+                            break;
+                        }
+                        if step == to_square {
+                            break 'queen_block;
+                        }
+                    }
+
+                    step = queen;
+                    // up
+                    loop {
+                        step = (step & !other_all) << 0o10 & !pieces_all;
+                        if step == 0 {
+                            break;
+                        }
+                        if step == to_square {
+                            break 'queen_block;
+                        }
+                    }
+
+                    step = queen;
+                    // down
+                    loop {
+                        step = (step & !other_all) >> 0o10 & !pieces_all;
+                        if step == 0 {
+                            break;
+                        }
+                        if step == to_square {
+                            break 'queen_block;
+                        }
+                    }
+
+                    step = queen;
+                    // right up
+                    loop {
+                        step = (step & !other_all) << 0o11 & !0x101010101010101 & !pieces_all;
+                        if step == 0 {
+                            break;
+                        }
+                        if step == to_square {
+                            break 'queen_block;
+                        }
+                    }
+
+                    step = queen;
+                    // left up
+                    loop {
+                        step = (step & !other_all) << 7 & !0x8080808080808080 & !pieces_all;
+                        if step == 0 {
+                            break;
+                        }
+                        if step == to_square {
+                            break 'queen_block;
+                        }
+                    }
+
+                    step = queen;
+                    // right down
+                    loop {
+                        step = (step & !other_all) >> 7 & !0x101010101010101 & !pieces_all;
+                        if step == 0 {
+                            break;
+                        }
+                        if step == to_square {
+                            break 'queen_block;
+                        }
+                    }
+
+                    step = queen;
+                    // left down
+                    loop {
+                        step = (step & !other_all) >> 0o11 & !0x8080808080808080 & !pieces_all;
+                        if step == 0 {
+                            break;
+                        }
+                        if step == to_square {
+                            break 'queen_block;
+                        }
+                    }
+
+                    return false;
+                }
+            }
+            MoveType::Rook => {
+                let other_all = self.get_pieces(color.inv()).all;
+                let to_square = 1 << mv.to;
+
+                let rook = self.get_pieces(color).rooks & 1 << mv.from;
+                if rook == 0 {
+                    return false;
+                }
+                'rook_block: loop {
+                    let mut step = rook;
+                    // right
+                    loop {
+                        step = (step & !other_all) << 1 & !0x101010101010101 & !pieces_all;
+                        if step == 0 {
+                            break;
+                        }
+                        if step == to_square {
+                            break 'rook_block;
+                        }
+                    }
+
+                    step = rook;
+                    // left
+                    loop {
+                        step = (step & !other_all) >> 1 & !0x8080808080808080 & !pieces_all;
+                        if step == 0 {
+                            break;
+                        }
+                        if step == to_square {
+                            break 'rook_block;
+                        }
+                    }
+
+                    step = rook;
+                    // up
+                    loop {
+                        step = (step & !other_all) << 0o10 & !pieces_all;
+                        if step == 0 {
+                            break;
+                        }
+                        if step == to_square {
+                            break 'rook_block;
+                        }
+                    }
+
+                    step = rook;
+                    // down
+                    loop {
+                        step = (step & !other_all) >> 0o10 & !pieces_all;
+                        if step == 0 {
+                            break;
+                        }
+                        if step == to_square {
+                            break 'rook_block;
+                        }
+                    }
+
+                    return false;
+                }
+            }
+            MoveType::Bishop => {
+                let other_all = self.get_pieces(color.inv()).all;
+                let to_square = 1 << mv.to;
+
+                let bishop = self.get_pieces(color).bishops & 1 << mv.from;
+                if bishop == 0 {
+                    return false;
+                }
+                'bishop_block: loop {
+                    let mut step = bishop;
+                    // right up
+                    loop {
+                        step = (step & !other_all) << 0o11 & !0x101010101010101 & !pieces_all;
+                        if step == 0 {
+                            break;
+                        }
+                        if step == to_square {
+                            break 'bishop_block;
+                        }
+                    }
+
+                    step = bishop;
+                    // left up
+                    loop {
+                        step = (step & !other_all) << 7 & !0x8080808080808080 & !pieces_all;
+                        if step == 0 {
+                            break;
+                        }
+                        if step == to_square {
+                            break 'bishop_block;
+                        }
+                    }
+
+                    step = bishop;
+                    // right down
+                    loop {
+                        step = (step & !other_all) >> 7 & !0x101010101010101 & !pieces_all;
+                        if step == 0 {
+                            break;
+                        }
+                        if step == to_square {
+                            break 'bishop_block;
+                        }
+                    }
+
+                    step = bishop;
+                    // left down
+                    loop {
+                        step = (step & !other_all) >> 0o11 & !0x8080808080808080 & !pieces_all;
+                        if step == 0 {
+                            break;
+                        }
+                        if step == to_square {
+                            break 'bishop_block;
+                        }
+                    }
+
                     return false;
                 }
             }
@@ -383,7 +621,7 @@ impl Board {
                     | (knight << 0o17 | knight >> 0o21) & !0x8080808080808080
                     | (knight << 0o12 | knight >> 6) & !0x303030303030303
                     | (knight << 6 | knight >> 0o12) & !0xc0c0c0c0c0c0c0c0)
-                    & !all_color
+                    & !pieces_all
                     & 1 << mv.to
                     == 0
                 {
@@ -462,7 +700,7 @@ impl Board {
                     Color::White => {
                         let pawn = self.white_pieces.pawns & 1 << mv.from;
 
-                        if mv.to != 1 << (self.prev_move.to + 0o10) {
+                        if mv.to != self.prev_move.to + 0o10 {
                             return false;
                         }
 
@@ -476,7 +714,7 @@ impl Board {
                     Color::Black => {
                         let pawn = self.black_pieces.pawns & 1 << mv.from;
 
-                        if mv.to != 1 << (self.prev_move.to - 0o10) {
+                        if mv.to != self.prev_move.to - 0o10 {
                             return false;
                         }
 
@@ -556,8 +794,7 @@ impl Board {
                     _ => return false,
                 }
             }
-            _ => todo!(),
-        };
+        }
 
         let mut board = *self;
         board.perform_move(mv);
@@ -1508,120 +1745,83 @@ fn to_chess_pos(x: u8) -> String {
 }
 
 fn main() {
+    let moves: &[_] = &[
+        Move {
+            from: chess_pos(b"e2"),
+            to: chess_pos(b"e4"),
+            ty: MoveType::PawnLeap,
+        },
+        Move {
+            from: chess_pos(b"d7"),
+            to: chess_pos(b"d5"),
+            ty: MoveType::PawnLeap,
+        },
+        Move {
+            from: chess_pos(b"e4"),
+            to: chess_pos(b"e5"),
+            ty: MoveType::Pawn,
+        },
+        Move {
+            from: chess_pos(b"f7"),
+            to: chess_pos(b"f5"),
+            ty: MoveType::PawnLeap,
+        },
+        Move {
+            from: chess_pos(b"e5"),
+            to: chess_pos(b"f6"),
+            ty: MoveType::PawnEnPassant,
+        },
+        Move {
+            from: chess_pos(b"g8"),
+            to: chess_pos(b"f6"),
+            ty: MoveType::Knight,
+        },
+        Move {
+            from: chess_pos(b"f1"),
+            to: chess_pos(b"b5"),
+            ty: MoveType::Bishop,
+        },
+        Move {
+            from: chess_pos(b"c7"),
+            to: chess_pos(b"c6"),
+            ty: MoveType::Pawn,
+        },
+        Move {
+            from: chess_pos(b"g1"),
+            to: chess_pos(b"h3"),
+            ty: MoveType::Knight,
+        },
+        Move {
+            from: chess_pos(b"c6"),
+            to: chess_pos(b"b5"),
+            ty: MoveType::Pawn,
+        },
+        Move {
+            from: chess_pos(b"e1"),
+            to: chess_pos(b"g1"),
+            ty: MoveType::Castle,
+        },
+    ];
+
     let mut board = Board::new();
 
-    board.print(Color::White);
-    board.print_moves(Color::White);
-    println!("attack: 0x{:x}", board.check_attack(Color::White));
-    println!();
-    board.perform_move(Move {
-        from: chess_pos(b"e2"),
-        to: chess_pos(b"e4"),
-        ty: MoveType::PawnLeap,
-    });
+    let mut color = Color::White;
+    for &mv in moves.iter() {
+        board.print(color);
+        board.print_moves(color);
+        println!("attack: 0x{:x}", board.check_attack(color));
+        println!();
+        assert!(board
+            .moves(color)
+            .iter()
+            .all(|&mv| board.is_legal(color, mv)));
+        board.perform_move(mv);
 
-    board.print(Color::Black);
-    board.print_moves(Color::Black);
-    println!("attack: 0x{:x}", board.check_attack(Color::Black));
-    println!();
-    board.perform_move(Move {
-        from: chess_pos(b"d7"),
-        to: chess_pos(b"d5"),
-        ty: MoveType::PawnLeap,
-    });
+        color = color.inv();
+    }
 
-    board.print(Color::White);
-    board.print_moves(Color::White);
-    println!("attack: 0x{:x}", board.check_attack(Color::White));
-    println!();
-    board.perform_move(Move {
-        from: chess_pos(b"e4"),
-        to: chess_pos(b"e5"),
-        ty: MoveType::Pawn,
-    });
-
-    board.print(Color::Black);
-    board.print_moves(Color::Black);
-    println!("attack: 0x{:x}", board.check_attack(Color::Black));
-    println!();
-    board.perform_move(Move {
-        from: chess_pos(b"f7"),
-        to: chess_pos(b"f5"),
-        ty: MoveType::PawnLeap,
-    });
-
-    board.print(Color::White);
-    board.print_moves(Color::White);
-    println!("attack: 0x{:x}", board.check_attack(Color::White));
-    println!();
-    board.perform_move(Move {
-        from: chess_pos(b"e5"),
-        to: chess_pos(b"f6"),
-        ty: MoveType::PawnEnPassant,
-    });
-
-    board.print(Color::Black);
-    board.print_moves(Color::Black);
-    println!("attack: 0x{:x}", board.check_attack(Color::Black));
-    println!();
-    board.perform_move(Move {
-        from: chess_pos(b"g8"),
-        to: chess_pos(b"f6"),
-        ty: MoveType::Knight,
-    });
-
-    board.print(Color::White);
-    board.print_moves(Color::White);
-    println!("attack: 0x{:x}", board.check_attack(Color::White));
-    println!();
-    board.perform_move(Move {
-        from: chess_pos(b"f1"),
-        to: chess_pos(b"b5"),
-        ty: MoveType::Bishop,
-    });
-
-    board.print(Color::Black);
-    board.print_moves(Color::Black);
-    println!("attack: 0x{:x}", board.check_attack(Color::Black));
-    println!();
-    board.perform_move(Move {
-        from: chess_pos(b"c7"),
-        to: chess_pos(b"c6"),
-        ty: MoveType::Pawn,
-    });
-
-    board.print(Color::White);
-    board.print_moves(Color::White);
-    println!("attack: 0x{:x}", board.check_attack(Color::White));
-    println!();
-    board.perform_move(Move {
-        from: chess_pos(b"g1"),
-        to: chess_pos(b"h3"),
-        ty: MoveType::Knight,
-    });
-
-    board.print(Color::Black);
-    board.print_moves(Color::Black);
-    println!("attack: 0x{:x}", board.check_attack(Color::Black));
-    println!();
-    board.perform_move(Move {
-        from: chess_pos(b"c6"),
-        to: chess_pos(b"b5"),
-        ty: MoveType::Pawn,
-    });
-
-    board.print(Color::White);
-    board.print_moves(Color::White);
-    println!("attack: 0x{:x}", board.check_attack(Color::White));
-    println!();
-    board.perform_move(Move {
-        from: chess_pos(b"e1"),
-        to: chess_pos(b"g1"),
-        ty: MoveType::Castle,
-    });
-
-    board.print(Color::Black);
-    board.print_moves(Color::Black);
-    println!("attack: 0x{:x}", board.check_attack(Color::Black));
+    board.print(color);
+    board.print_moves(color);
+    println!("attack: 0x{:x}", board.check_attack(color));
     println!();
 }
