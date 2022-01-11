@@ -42,8 +42,8 @@ pub enum PieceType {
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub struct Piece {
-    color: Color,
-    ty: PieceType,
+    pub color: Color,
+    pub ty: PieceType,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
@@ -64,7 +64,7 @@ pub struct Board {
     pub white_pieces: Pieces,
     pub black_pieces: Pieces,
     pub prev_move: Move,
-    flags: ChessFlags,
+    pub flags: ChessFlags,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
@@ -799,19 +799,16 @@ impl Board {
         };
 
         let mut push_move = |mv: Move, use_other_attack: bool| {
-            let (attack, king) = if use_other_attack {
-                (other_attack, pieces.king)
-            } else {
-                let mut board = *self;
-                board.perform_move(mv);
+            let mut board = *self;
+            board.perform_move(mv);
 
-                (
-                    board.check_attack(color.inv()),
-                    board.get_pieces(color).king,
-                )
+            let attack = if use_other_attack {
+                other_attack
+            } else {
+                board.check_attack(color.inv())
             };
 
-            if attack & king == 0 {
+            if attack & board.get_pieces(color).king == 0 {
                 moves.push(mv);
             }
         };
@@ -1294,6 +1291,323 @@ impl Board {
         moves
     }
 
+    pub fn capture_moves(&self, color: Color) -> Vec<Move> {
+        let mut moves = Vec::new();
+
+        let (pieces, other_all) = match color {
+            Color::White => (self.white_pieces, self.black_pieces.all),
+            Color::Black => (self.black_pieces, self.white_pieces.all),
+        };
+
+        let mut push_move = |mv: Move| {
+            let mut board = *self;
+            board.perform_move(mv);
+
+            let attack = board.check_attack(color.inv());
+
+            if attack & board.get_pieces(color).king == 0 {
+                moves.push(mv);
+            }
+        };
+
+        match color {
+            Color::White => {
+                if self.prev_move.ty == MoveType::PawnLeap {
+                    if 1 << (self.prev_move.to + 1) & pieces.pawns & !0x101010101010101 != 0 {
+                        push_move(Move {
+                            from: self.prev_move.to + 1,
+                            to: self.prev_move.to + 0o10,
+                            ty: MoveType::PawnEnPassant,
+                        });
+                    }
+                    if 1 << (self.prev_move.to - 1) & pieces.pawns & !0x8080808080808080 != 0 {
+                        push_move(Move {
+                            from: self.prev_move.to - 1,
+                            to: self.prev_move.to + 0o10,
+                            ty: MoveType::PawnEnPassant,
+                        });
+                    }
+                }
+
+                for bit in BitIterator(pieces.pawns << 0o11 & !0x101010101010101 & other_all) {
+                    push_move(Move {
+                        from: bit.trailing_zeros() as u8 - 0o11,
+                        to: bit.trailing_zeros() as _,
+                        ty: if bit & 0xff << 0o70 == 0 {
+                            MoveType::Pawn
+                        } else {
+                            MoveType::PawnQueenPromotion
+                        },
+                    });
+                }
+                for bit in BitIterator(pieces.pawns << 7 & !0x8080808080808080 & other_all) {
+                    push_move(Move {
+                        from: bit.trailing_zeros() as u8 - 7,
+                        to: bit.trailing_zeros() as _,
+                        ty: if bit & 0xff << 0o70 == 0 {
+                            MoveType::Pawn
+                        } else {
+                            MoveType::PawnQueenPromotion
+                        },
+                    });
+                }
+            }
+            Color::Black => {
+                if self.prev_move.ty == MoveType::PawnLeap {
+                    if 1 << (self.prev_move.to + 1) & pieces.pawns & !0x101010101010101 != 0 {
+                        push_move(Move {
+                            from: self.prev_move.to + 1,
+                            to: self.prev_move.to - 0o10,
+                            ty: MoveType::PawnEnPassant,
+                        });
+                    }
+                    if 1 << (self.prev_move.to - 1) & pieces.pawns & !0x8080808080808080 != 0 {
+                        push_move(Move {
+                            from: self.prev_move.to - 1,
+                            to: self.prev_move.to - 0o10,
+                            ty: MoveType::PawnEnPassant,
+                        });
+                    }
+                }
+
+                for bit in BitIterator(pieces.pawns >> 0o11 & !0x8080808080808080 & other_all) {
+                    push_move(Move {
+                        from: bit.trailing_zeros() as u8 + 0o11,
+                        to: bit.trailing_zeros() as _,
+                        ty: if bit & 0xff == 0 {
+                            MoveType::Pawn
+                        } else {
+                            MoveType::PawnQueenPromotion
+                        },
+                    });
+                }
+                for bit in BitIterator(pieces.pawns >> 7 & !0x101010101010101 & other_all) {
+                    push_move(Move {
+                        from: bit.trailing_zeros() as u8 + 7,
+                        to: bit.trailing_zeros() as _,
+                        ty: if bit & 0xff == 0 {
+                            MoveType::Pawn
+                        } else {
+                            MoveType::PawnQueenPromotion
+                        },
+                    });
+                }
+            }
+        }
+
+        {
+            let king_moves = ((pieces.king << 1 | pieces.king << 0o11 | pieces.king >> 7)
+                & !0x101010101010101
+                | (pieces.king >> 1 | pieces.king >> 0o11 | pieces.king << 7)
+                    & !0x8080808080808080
+                | pieces.king << 0o10
+                | pieces.king >> 0o10)
+                & other_all;
+            for bit in BitIterator(king_moves) {
+                push_move(Move {
+                    from: pieces.king.trailing_zeros() as u8,
+                    to: bit.trailing_zeros() as _,
+                    ty: MoveType::King,
+                });
+            }
+        }
+
+        {
+            let mut move_r = pieces.queens | pieces.rooks;
+            let mut move_l = pieces.queens | pieces.rooks;
+            let mut move_u = pieces.queens | pieces.rooks;
+            let mut move_d = pieces.queens | pieces.rooks;
+
+            let mut move_ru = pieces.queens | pieces.bishops;
+            let mut move_lu = pieces.queens | pieces.bishops;
+            let mut move_rd = pieces.queens | pieces.bishops;
+            let mut move_ld = pieces.queens | pieces.bishops;
+
+            for i in 1..8 {
+                move_r = (move_r & !other_all) << 1 & !0x101010101010101 & !pieces.all;
+                move_l = (move_l & !other_all) >> 1 & !0x8080808080808080 & !pieces.all;
+                move_u = (move_u & !other_all) << 0o10 & !pieces.all;
+                move_d = (move_d & !other_all) >> 0o10 & !pieces.all;
+
+                move_ru = (move_ru & !other_all) << 0o11 & !0x101010101010101 & !pieces.all;
+                move_lu = (move_lu & !other_all) << 7 & !0x8080808080808080 & !pieces.all;
+                move_rd = (move_rd & !other_all) >> 7 & !0x101010101010101 & !pieces.all;
+                move_ld = (move_ld & !other_all) >> 0o11 & !0x8080808080808080 & !pieces.all;
+
+                if move_r | move_l | move_u | move_d | move_ru | move_lu | move_rd | move_ld == 0 {
+                    break;
+                }
+
+                for bit in BitIterator(move_r & other_all) {
+                    push_move(Move {
+                        from: bit.trailing_zeros() as u8 - i,
+                        to: bit.trailing_zeros() as _,
+                        ty: if bit >> i & pieces.queens != 0 {
+                            MoveType::Queen
+                        } else {
+                            MoveType::Rook
+                        },
+                    });
+                }
+
+                for bit in BitIterator(move_l & other_all) {
+                    push_move(Move {
+                        from: bit.trailing_zeros() as u8 + i,
+                        to: bit.trailing_zeros() as _,
+                        ty: if bit << i & pieces.queens != 0 {
+                            MoveType::Queen
+                        } else {
+                            MoveType::Rook
+                        },
+                    });
+                }
+
+                for bit in BitIterator(move_u & other_all) {
+                    push_move(Move {
+                        from: bit.trailing_zeros() as u8 - 0o10 * i,
+                        to: bit.trailing_zeros() as _,
+                        ty: if bit >> (0o10 * i) & pieces.queens != 0 {
+                            MoveType::Queen
+                        } else {
+                            MoveType::Rook
+                        },
+                    });
+                }
+
+                for bit in BitIterator(move_d & other_all) {
+                    push_move(Move {
+                        from: bit.trailing_zeros() as u8 + 0o10 * i,
+                        to: bit.trailing_zeros() as _,
+                        ty: if bit << (0o10 * i) & pieces.queens != 0 {
+                            MoveType::Queen
+                        } else {
+                            MoveType::Rook
+                        },
+                    });
+                }
+
+                for bit in BitIterator(move_ru & other_all) {
+                    push_move(Move {
+                        from: bit.trailing_zeros() as u8 - 0o11 * i,
+                        to: bit.trailing_zeros() as _,
+                        ty: if bit >> (0o11 * i) & pieces.queens != 0 {
+                            MoveType::Queen
+                        } else {
+                            MoveType::Bishop
+                        },
+                    });
+                }
+
+                for bit in BitIterator(move_lu & other_all) {
+                    push_move(Move {
+                        from: bit.trailing_zeros() as u8 - 7 * i,
+                        to: bit.trailing_zeros() as _,
+                        ty: if bit >> (7 * i) & pieces.queens != 0 {
+                            MoveType::Queen
+                        } else {
+                            MoveType::Bishop
+                        },
+                    });
+                }
+
+                for bit in BitIterator(move_rd & other_all) {
+                    push_move(Move {
+                        from: bit.trailing_zeros() as u8 + 7 * i,
+                        to: bit.trailing_zeros() as _,
+                        ty: if bit << (7 * i) & pieces.queens != 0 {
+                            MoveType::Queen
+                        } else {
+                            MoveType::Bishop
+                        },
+                    });
+                }
+
+                for bit in BitIterator(move_ld & other_all) {
+                    push_move(Move {
+                        from: bit.trailing_zeros() as u8 + 0o11 * i,
+                        to: bit.trailing_zeros() as _,
+                        ty: if bit << (0o11 * i) & pieces.queens != 0 {
+                            MoveType::Queen
+                        } else {
+                            MoveType::Bishop
+                        },
+                    });
+                }
+            }
+        }
+
+        {
+            // let knight_moves = (0
+            //     | (pieces.knights << 0o21 | pieces.knights >> 0o17) & !0x101010101010101
+            //     | (pieces.knights << 0o17 | pieces.knights >> 0o21) & !0x8080808080808080
+            //     | (pieces.knights << 0o12 | pieces.knights >> 6) & !0x303030303030303
+            //     | (pieces.knights << 6 | pieces.knights >> 0o12) & !0xc0c0c0c0c0c0c0c0
+            //     | 0)
+            //     & !pieces.all;
+            for bit in BitIterator(pieces.knights << 0o21 & !0x101010101010101 & other_all) {
+                push_move(Move {
+                    from: bit.trailing_zeros() as u8 - 0o21,
+                    to: bit.trailing_zeros() as _,
+                    ty: MoveType::Knight,
+                });
+            }
+            for bit in BitIterator(pieces.knights >> 0o17 & !0x101010101010101 & other_all) {
+                push_move(Move {
+                    from: bit.trailing_zeros() as u8 + 0o17,
+                    to: bit.trailing_zeros() as _,
+                    ty: MoveType::Knight,
+                });
+            }
+
+            for bit in BitIterator(pieces.knights << 0o17 & !0x8080808080808080 & other_all) {
+                push_move(Move {
+                    from: bit.trailing_zeros() as u8 - 0o17,
+                    to: bit.trailing_zeros() as _,
+                    ty: MoveType::Knight,
+                });
+            }
+            for bit in BitIterator(pieces.knights >> 0o21 & !0x8080808080808080 & other_all) {
+                push_move(Move {
+                    from: bit.trailing_zeros() as u8 + 0o21,
+                    to: bit.trailing_zeros() as _,
+                    ty: MoveType::Knight,
+                });
+            }
+
+            for bit in BitIterator(pieces.knights << 0o12 & !0x303030303030303 & other_all) {
+                push_move(Move {
+                    from: bit.trailing_zeros() as u8 - 0o12,
+                    to: bit.trailing_zeros() as _,
+                    ty: MoveType::Knight,
+                });
+            }
+            for bit in BitIterator(pieces.knights >> 6 & !0x303030303030303 & other_all) {
+                push_move(Move {
+                    from: bit.trailing_zeros() as u8 + 6,
+                    to: bit.trailing_zeros() as _,
+                    ty: MoveType::Knight,
+                });
+            }
+
+            for bit in BitIterator(pieces.knights << 6 & !0xc0c0c0c0c0c0c0c0 & other_all) {
+                push_move(Move {
+                    from: bit.trailing_zeros() as u8 - 6,
+                    to: bit.trailing_zeros() as _,
+                    ty: MoveType::Knight,
+                });
+            }
+            for bit in BitIterator(pieces.knights >> 0o12 & !0xc0c0c0c0c0c0c0c0 & other_all) {
+                push_move(Move {
+                    from: bit.trailing_zeros() as u8 + 0o12,
+                    to: bit.trailing_zeros() as _,
+                    ty: MoveType::Knight,
+                });
+            }
+        }
+
+        moves
+    }
+
     pub fn perform_move(&mut self, mv: Move) {
         self.prev_move = mv;
 
@@ -1712,18 +2026,17 @@ impl Piece {
     }
 }
 
-pub fn print_moves(board: &Board, moves: &[Move]) {
-    for mv in moves.iter() {
+impl Move {
+    pub fn print(&self, board: &Board) {
         println!(
             "  {} : {}->{}  // move.type={:?}",
             board
-                .get_at(1 << mv.from)
+                .get_at(1 << self.from)
                 .map(|p| p.to_char())
                 .unwrap_or('#'),
-            crate::to_chess_pos(mv.from),
-            crate::to_chess_pos(mv.to),
-            mv.ty,
+            crate::to_chess_pos(self.from),
+            crate::to_chess_pos(self.to),
+            self.ty,
         );
     }
-    println!();
 }
