@@ -52,11 +52,16 @@ impl Bot {
     fn eval_captures_board_rec(
         &self,
         board: &Board,
+        pos: u8,
         color: Color,
         mut alpha: i32,
         beta: i32,
     ) -> i32 {
-        let mut moves = board.capture_moves(color);
+        let mut moves: Vec<_> = board
+            .capture_moves(color)
+            .into_iter()
+            .filter(|mv| mv.to == pos)
+            .collect();
 
         if moves.is_empty() {
             if board.check_attack(color.inv()) & board.get_pieces(color).king == 0 {
@@ -77,8 +82,13 @@ impl Bot {
             for mv in moves.into_iter() {
                 let mut board = *board;
                 board.perform_move(mv);
-                value =
-                    value.max(-self.eval_captures_board_rec(&board, color.inv(), -beta, -alpha));
+                value = value.max(-self.eval_captures_board_rec(
+                    &board,
+                    pos,
+                    color.inv(),
+                    -beta,
+                    -alpha,
+                ));
                 if beta <= value {
                     return beta;
                 }
@@ -98,12 +108,7 @@ impl Bot {
         beta: i32,
     ) -> i32 {
         if depth == 0 {
-            self.eval_captures_board_rec(board, color, alpha, beta)
-            // let val = self.guess_white_win(&board);
-            // match color {
-            //     Color::White => val,
-            //     Color::Black => -val,
-            // }
+            self.eval_captures_board_rec(board, board.prev_move.to, color, alpha, beta)
         } else {
             let mut moves = board.moves(color);
             if moves.is_empty() {
@@ -148,7 +153,7 @@ impl Bot {
         let attack = board.check_attack(color.inv());
         moves.sort_by_key(|mv| -self.eval_move(mv, board, attack));
 
-        moves.into_par_iter().max_by_key(|&mv| {
+        moves.into_par_iter().min_by_key(|&mv| {
             let mut board = *board;
             board.perform_move(mv);
             self.eval_board_rec(&board, color.inv(), DEPTH, -i32::MAX, i32::MAX)
